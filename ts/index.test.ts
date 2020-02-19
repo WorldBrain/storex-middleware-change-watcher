@@ -8,8 +8,8 @@ import { ChangeWatchMiddlewareSettings, ChangeWatchMiddleware } from "."
 import { StorageOperationChangeInfo } from "./types"
 
 interface ProcessedTestOperations {
-    preproccessed: Array<{ operation: any[], info: StorageOperationChangeInfo<'pre'> }>
-    postproccessed: Array<{ operation: any[], info: StorageOperationChangeInfo<'post'> }>
+    preproccessed: Array<{ originalOperation: any[], info: StorageOperationChangeInfo<'pre'> }>
+    postproccessed: Array<{ originalOperation: any[], info: StorageOperationChangeInfo<'post'> }>
 }
 interface TestSetup {
     storageManager: StorageManager
@@ -47,11 +47,11 @@ async function setupTest(options?: {
         shouldWatchCollection: options?.shouldWatchCollection ?? (() => true),
         operationWatchers: options?.operationWatchers,
         getCollectionDefinition: (collection) => storageManager.registry.collections[collection],
-        preprocessOperation: (options?.preprocesses ?? true) ? ((operation, info) => {
-            operations.preproccessed.push({ operation, info })
+        preprocessOperation: (options?.preprocesses ?? true) ? (({ originalOperation, info }) => {
+            operations.preproccessed.push({ originalOperation, info })
         }) : undefined,
-        postprocessOperation: (options?.postprocesses ?? true) ? ((operation, info) => {
-            operations.postproccessed.push({ operation, info })
+        postprocessOperation: (options?.postprocesses ?? true) ? (({ originalOperation, info }) => {
+            operations.postproccessed.push({ originalOperation, info })
         }) : undefined
     })
     storageManager.setMiddleware([changeWatchMiddleware, ...(options?.extraMiddleware ?? [])])
@@ -103,6 +103,14 @@ async function insertTestObjects(setup: Pick<TestSetup, 'storageManager' | 'popP
     return { object1, object2 }
 }
 
+function expectPreProcessedOperations(setup: Pick<TestSetup, 'popProcessedOperations'>, expected: ProcessedTestOperations['preproccessed']) {
+    expect(setup.popProcessedOperations('preproccessed')).toEqual(expected)
+}
+
+function expectPostProcessedOperations(setup: Pick<TestSetup, 'popProcessedOperations'>, expected: ProcessedTestOperations['postproccessed']) {
+    expect(setup.popProcessedOperations('postproccessed')).toEqual(expected)
+}
+
 describe('ChangeWatchMiddleware', () => {
     it('should correctly report creations with auto-generated IDs', async () => {
         const { storageManager, popProcessedOperations } = await setupTest()
@@ -113,9 +121,9 @@ describe('ChangeWatchMiddleware', () => {
                 { type: 'create', collection: 'user', values: creation.objectValues }
             ]
         }
-        expect(popProcessedOperations('preproccessed')).toEqual([
+        expectPreProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['createObject', 'user', creation.objectValues],
+                originalOperation: ['createObject', 'user', creation.objectValues],
                 info: expectedPreInfo
             }
         ])
@@ -124,9 +132,9 @@ describe('ChangeWatchMiddleware', () => {
                 { type: 'create', collection: 'user', pk: creation.object.id, values: creation.objectValues }
             ]
         }
-        expect(popProcessedOperations('postproccessed')).toEqual([
+        expectPostProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['createObject', 'user', creation.objectValues],
+                originalOperation: ['createObject', 'user', creation.objectValues],
                 info: expectedPostInfo
             }
         ])
@@ -143,9 +151,9 @@ describe('ChangeWatchMiddleware', () => {
                 { type: 'create', collection: 'user', pk: 5, values: { ...creation.objectValues, id: 5 } }
             ]
         }
-        expect(popProcessedOperations('preproccessed')).toEqual([
+        expectPreProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['createObject', 'user', { ...creation.objectValues, id: 5 }],
+                originalOperation: ['createObject', 'user', { ...creation.objectValues, id: 5 }],
                 info: expectedPreInfo
             }
         ])
@@ -154,9 +162,9 @@ describe('ChangeWatchMiddleware', () => {
                 { type: 'create', collection: 'user', pk: creation.object.id, values: { ...creation.objectValues, id: 5 } }
             ]
         }
-        expect(popProcessedOperations('postproccessed')).toEqual([
+        expectPostProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['createObject', 'user', { ...creation.objectValues, id: 5 }],
+                originalOperation: ['createObject', 'user', { ...creation.objectValues, id: 5 }],
                 info: expectedPostInfo
             }
         ])
@@ -180,12 +188,13 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('preproccessed')).toEqual([
+        const expectedPreprocessedOperations: ProcessedTestOperations['preproccessed'] = [
             {
-                operation: ['updateObject', 'user', { id: object1.id }, { displayName: 'Jon' }],
+                originalOperation: ['updateObject', 'user', { id: object1.id }, { displayName: 'Jon' }],
                 info: expectedPreInfo
             }
-        ])
+        ]
+        expect(popProcessedOperations('preproccessed')).toEqual(expectedPreprocessedOperations)
         const expectedPostInfo: StorageOperationChangeInfo<'post'> = {
             changes: [
                 {
@@ -196,9 +205,9 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('postproccessed')).toEqual([
+        expectPostProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['updateObject', 'user', { id: object1.id }, { displayName: 'Jon' }],
+                originalOperation: ['updateObject', 'user', { id: object1.id }, { displayName: 'Jon' }],
                 info: expectedPostInfo
             }
         ])
@@ -225,9 +234,9 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('preproccessed')).toEqual([
+        expectPreProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['updateObjects', 'user', { id: object1.id }, { displayName: 'Jon' }],
+                originalOperation: ['updateObjects', 'user', { id: object1.id }, { displayName: 'Jon' }],
                 info: expectedPreInfo
             }
         ])
@@ -241,9 +250,9 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('postproccessed')).toEqual([
+        expectPostProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['updateObjects', 'user', { id: object1.id }, { displayName: 'Jon' }],
+                originalOperation: ['updateObjects', 'user', { id: object1.id }, { displayName: 'Jon' }],
                 info: expectedPostInfo
             }
         ])
@@ -270,9 +279,9 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('preproccessed')).toEqual([
+        expectPreProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['updateObjects', 'user', { displayName: 'Joe' }, { displayName: 'Jon' }],
+                originalOperation: ['updateObjects', 'user', { displayName: 'Joe' }, { displayName: 'Jon' }],
                 info: expectedPreInfo
             }
         ])
@@ -286,9 +295,9 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('postproccessed')).toEqual([
+        expectPostProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['updateObjects', 'user', { displayName: 'Joe' }, { displayName: 'Jon' }],
+                originalOperation: ['updateObjects', 'user', { displayName: 'Joe' }, { displayName: 'Jon' }],
                 info: expectedPostInfo
             }
         ])
@@ -314,9 +323,9 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('preproccessed')).toEqual([
+        expectPreProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['deleteObject', 'user', { id: object1.id }],
+                originalOperation: ['deleteObject', 'user', { id: object1.id }],
                 info: expectedPreInfo
             }
         ])
@@ -329,9 +338,9 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('postproccessed')).toEqual([
+        expectPostProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['deleteObject', 'user', { id: object1.id }],
+                originalOperation: ['deleteObject', 'user', { id: object1.id }],
                 info: expectedPostInfo
             }
         ])
@@ -356,9 +365,9 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('preproccessed')).toEqual([
+        expectPreProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['deleteObjects', 'user', { id: object1.id }],
+                originalOperation: ['deleteObjects', 'user', { id: object1.id }],
                 info: expectedPreInfo
             }
         ])
@@ -371,9 +380,9 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('postproccessed')).toEqual([
+        expectPostProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['deleteObjects', 'user', { id: object1.id }],
+                originalOperation: ['deleteObjects', 'user', { id: object1.id }],
                 info: expectedPostInfo
             }
         ])
@@ -398,10 +407,10 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('preproccessed')).toEqual([
+        expectPreProcessedOperations({ popProcessedOperations }, [
             {
 
-                operation: ['deleteObjects', 'user', { displayName: 'Joe' }],
+                originalOperation: ['deleteObjects', 'user', { displayName: 'Joe' }],
                 info: expectedPreInfo
             }
         ])
@@ -414,9 +423,9 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
-        expect(popProcessedOperations('postproccessed')).toEqual([
+        expectPostProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['deleteObjects', 'user', { displayName: 'Joe' }],
+                originalOperation: ['deleteObjects', 'user', { displayName: 'Joe' }],
                 info: expectedPostInfo
             }
         ])
@@ -451,9 +460,9 @@ describe('ChangeWatchMiddleware', () => {
                 { type: 'delete', collection: 'user', where: batch[2].where!, pks: [object2.id] },
             ]
         }
-        expect(popProcessedOperations('preproccessed')).toEqual([
+        expectPreProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['executeBatch', batch],
+                originalOperation: ['executeBatch', batch],
                 info: expectedPreInfo
             }
         ])
@@ -464,9 +473,9 @@ describe('ChangeWatchMiddleware', () => {
                 { type: 'delete', collection: 'user', where: batch[2].where!, pks: [object2.id] },
             ]
         }
-        expect(popProcessedOperations('postproccessed')).toEqual([
+        expectPostProcessedOperations({ popProcessedOperations }, [
             {
-                operation: ['executeBatch', batch],
+                originalOperation: ['executeBatch', batch],
                 info: expectedPostInfo
             }
         ])
@@ -500,19 +509,72 @@ describe('ChangeWatchMiddleware', () => {
         await testCreateWithoutLogging(setup)
     })
 
-    // it('should correctly pass down change information to next middleware', async () => {
-    //     const calls: Array<Pick<StorageMiddlewareContext, 'extraData'>> = []
-    //     const { storageManager, popProcessedOperations } = await setupTest({
-    //         extraMiddleware: [{
-    //             process: context => {
-    //                 calls.push({ extraData: context.extraData })
-    //                 return context.next.process({ operation: context.operation })
-    //             }
-    //         }]
-    //     })
+    it('should correctly pass down change information to next middleware', async () => {
+        const calls: Array<Pick<StorageMiddlewareContext, 'extraData'>> = []
+        const { storageManager, popProcessedOperations } = await setupTest({
+            extraMiddleware: [{
+                process: context => {
+                    calls.push({ extraData: context.extraData })
+                    return context.next.process({ operation: context.operation })
+                }
+            }]
+        })
 
-    //     const { object1, object2 } = await insertTestObjects({ storageManager, popProcessedOperations })
-    //     await storageManager.operation('deleteObjects', 'user', { displayName: 'Joe' })
-    //     expect(calls).toEqual({})
-    // })
+        const { object1 } = await insertTestObjects({ storageManager, popProcessedOperations })
+        await storageManager.operation('deleteObjects', 'user', { displayName: 'Joe' })
+        const expected: Array<{ extraData: { changeInfo?: StorageOperationChangeInfo<'pre'> } }> = [
+            {
+                extraData: {
+                    changeInfo: {
+                        changes: [
+                            {
+                                type: 'create',
+                                collection: 'user',
+                                values: {
+                                    displayName: 'Joe',
+                                }
+                            }
+                        ]
+                    }
+                }
+            },
+            {
+                extraData: {
+                    changeInfo: {
+                        changes: [
+                            {
+                                type: 'create',
+                                collection: 'user',
+                                values: {
+                                    displayName: 'Bob',
+                                }
+                            }
+                        ]
+                    }
+                }
+            },
+            {
+                extraData: {
+                    changeInfo: {
+                        changes: []
+                    }
+                },
+            },
+            {
+                extraData: {
+                    changeInfo: {
+                        changes: [
+                            {
+                                type: 'delete',
+                                collection: 'user',
+                                where: { displayName: 'Joe' },
+                                pks: [object1.id]
+                            }
+                        ]
+                    }
+                }
+            },
+        ]
+        expect(calls).toEqual(expected)
+    })
 })

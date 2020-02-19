@@ -8,8 +8,8 @@ export interface ChangeWatchMiddlewareSettings {
     shouldWatchCollection(collection: string): boolean
     operationWatchers?: { [name: string]: StorageOperationWatcher }
     getCollectionDefinition?(collection: string): CollectionDefinition
-    preprocessOperation?(operation: any[], info: StorageOperationChangeInfo<'pre'>): void | Promise<void>
-    postprocessOperation?(operation: any[], info: StorageOperationChangeInfo<'post'>): void | Promise<void>
+    preprocessOperation?(context: { originalOperation: any[], info: StorageOperationChangeInfo<'pre'> }): void | Promise<void>
+    postprocessOperation?(context: { originalOperation: any[], info: StorageOperationChangeInfo<'post'> }): void | Promise<void>
 }
 export class ChangeWatchMiddleware implements StorageMiddleware {
     enabled = true
@@ -26,7 +26,17 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
     }
 
     async process(context: StorageMiddlewareContext) {
-        const executeNext = () => context.next.process({ operation: cloneDeep(context.operation) })
+        const executeNext = (preInfo?: StorageOperationChangeInfo<'pre'>) => {
+            if (!preInfo) {
+                preInfo = { changes: [] }
+            }
+            return context.next.process({
+                operation: cloneDeep(context.operation),
+                extraData: {
+                    changeInfo: preInfo,
+                }
+            })
+        }
         if (!this.enabled) {
             return executeNext()
         }
@@ -42,9 +52,9 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
             storageManager: this.options.storageManager
         })
         if (this.options.preprocessOperation) {
-            await this.options.preprocessOperation(originalOperation, preInfo)
+            await this.options.preprocessOperation({ originalOperation, info: preInfo })
         }
-        const result = await executeNext()
+        const result = await executeNext(preInfo)
 
         const postInfo = await watcher.getInfoAfterExecution({
             operation: originalOperation,
@@ -53,7 +63,7 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
             storageManager: this.options.storageManager,
         })
         if (this.options.postprocessOperation) {
-            await this.options.postprocessOperation(originalOperation, postInfo)
+            await this.options.postprocessOperation({ originalOperation, info: postInfo })
         }
         return result
     }
