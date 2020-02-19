@@ -1,15 +1,15 @@
 import cloneDeep from 'lodash/cloneDeep'
 import expect = require("expect")
 import { StorageMiddleware, StorageMiddlewareContext } from '@worldbrain/storex/lib/types/middleware'
-import StorageManager, { CollectionFields, IndexDefinition } from "@worldbrain/storex"
+import StorageManager, { CollectionFields, IndexDefinition, OperationBatch } from "@worldbrain/storex"
 import { DexieStorageBackend } from "@worldbrain/storex-backend-dexie"
 import inMemory from "@worldbrain/storex-backend-dexie/lib/in-memory"
 import { ChangeWatchMiddlewareSettings, ChangeWatchMiddleware } from "."
-import { StorageOperationChangeInfo } from "./types"
+import { StorageOperationChangeInfo, StorageOperationEvent } from "./types"
 
 interface ProcessedTestOperations {
-    preproccessed: Array<{ originalOperation: any[], info: StorageOperationChangeInfo<'pre'> }>
-    postproccessed: Array<{ originalOperation: any[], info: StorageOperationChangeInfo<'post'> }>
+    preproccessed: Array<StorageOperationEvent<'pre'>>
+    postproccessed: Array<StorageOperationEvent<'post'>>
 }
 interface TestSetup {
     storageManager: StorageManager
@@ -47,11 +47,11 @@ async function setupTest(options?: {
         shouldWatchCollection: options?.shouldWatchCollection ?? (() => true),
         operationWatchers: options?.operationWatchers,
         getCollectionDefinition: (collection) => storageManager.registry.collections[collection],
-        preprocessOperation: (options?.preprocesses ?? true) ? (({ originalOperation, info }) => {
-            operations.preproccessed.push({ originalOperation, info })
+        preprocessOperation: (options?.preprocesses ?? true) ? (event => {
+            operations.preproccessed.push(event)
         }) : undefined,
-        postprocessOperation: (options?.postprocesses ?? true) ? (({ originalOperation, info }) => {
-            operations.postproccessed.push({ originalOperation, info })
+        postprocessOperation: (options?.postprocesses ?? true) ? (event => {
+            operations.postproccessed.push(event)
         }) : undefined
     })
     storageManager.setMiddleware([changeWatchMiddleware, ...(options?.extraMiddleware ?? [])])
@@ -188,13 +188,25 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
+        const batch: OperationBatch = [
+            {
+                collection: "user",
+                operation: "updateObjects",
+                placeholder: "change-0",
+                updates: {
+                    displayName: "Jon",
+                },
+                where: { id: { $in: [object1.id] } },
+            },
+        ]
         const expectedPreprocessedOperations: ProcessedTestOperations['preproccessed'] = [
             {
                 originalOperation: ['updateObject', 'user', { id: object1.id }, { displayName: 'Jon' }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPreInfo
             }
         ]
-        expect(popProcessedOperations('preproccessed')).toEqual(expectedPreprocessedOperations)
+        expectPreProcessedOperations({ popProcessedOperations }, expectedPreprocessedOperations)
         const expectedPostInfo: StorageOperationChangeInfo<'post'> = {
             changes: [
                 {
@@ -208,6 +220,7 @@ describe('ChangeWatchMiddleware', () => {
         expectPostProcessedOperations({ popProcessedOperations }, [
             {
                 originalOperation: ['updateObject', 'user', { id: object1.id }, { displayName: 'Jon' }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPostInfo
             }
         ])
@@ -234,9 +247,21 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
+        const batch: OperationBatch = [
+            {
+                collection: "user",
+                operation: "updateObjects",
+                placeholder: "change-0",
+                updates: {
+                    displayName: "Jon",
+                },
+                where: { id: { $in: [object1.id] } },
+            },
+        ]
         expectPreProcessedOperations({ popProcessedOperations }, [
             {
                 originalOperation: ['updateObjects', 'user', { id: object1.id }, { displayName: 'Jon' }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPreInfo
             }
         ])
@@ -253,6 +278,7 @@ describe('ChangeWatchMiddleware', () => {
         expectPostProcessedOperations({ popProcessedOperations }, [
             {
                 originalOperation: ['updateObjects', 'user', { id: object1.id }, { displayName: 'Jon' }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPostInfo
             }
         ])
@@ -279,9 +305,21 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
+        const batch: OperationBatch = [
+            {
+                collection: "user",
+                operation: "updateObjects",
+                placeholder: "change-0",
+                updates: {
+                    displayName: "Jon",
+                },
+                where: { id: { $in: [object1.id] } },
+            },
+        ]
         expectPreProcessedOperations({ popProcessedOperations }, [
             {
                 originalOperation: ['updateObjects', 'user', { displayName: 'Joe' }, { displayName: 'Jon' }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPreInfo
             }
         ])
@@ -298,6 +336,7 @@ describe('ChangeWatchMiddleware', () => {
         expectPostProcessedOperations({ popProcessedOperations }, [
             {
                 originalOperation: ['updateObjects', 'user', { displayName: 'Joe' }, { displayName: 'Jon' }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPostInfo
             }
         ])
@@ -323,9 +362,18 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
+        const batch: OperationBatch = [
+            {
+                collection: "user",
+                operation: "deleteObjects",
+                placeholder: "change-0",
+                where: { id: { $in: [object1.id] } },
+            },
+        ]
         expectPreProcessedOperations({ popProcessedOperations }, [
             {
                 originalOperation: ['deleteObject', 'user', { id: object1.id }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPreInfo
             }
         ])
@@ -341,6 +389,7 @@ describe('ChangeWatchMiddleware', () => {
         expectPostProcessedOperations({ popProcessedOperations }, [
             {
                 originalOperation: ['deleteObject', 'user', { id: object1.id }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPostInfo
             }
         ])
@@ -365,9 +414,18 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
+        const batch: OperationBatch = [
+            {
+                collection: "user",
+                operation: "deleteObjects",
+                placeholder: "change-0",
+                where: { id: { $in: [object1.id] } },
+            },
+        ]
         expectPreProcessedOperations({ popProcessedOperations }, [
             {
                 originalOperation: ['deleteObjects', 'user', { id: object1.id }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPreInfo
             }
         ])
@@ -383,6 +441,7 @@ describe('ChangeWatchMiddleware', () => {
         expectPostProcessedOperations({ popProcessedOperations }, [
             {
                 originalOperation: ['deleteObjects', 'user', { id: object1.id }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPostInfo
             }
         ])
@@ -407,10 +466,19 @@ describe('ChangeWatchMiddleware', () => {
                 },
             ]
         }
+        const batch: OperationBatch = [
+            {
+                collection: "user",
+                operation: "deleteObjects",
+                placeholder: "change-0",
+                where: { id: { $in: [object1.id] } },
+            },
+        ]
         expectPreProcessedOperations({ popProcessedOperations }, [
             {
 
                 originalOperation: ['deleteObjects', 'user', { displayName: 'Joe' }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPreInfo
             }
         ])
@@ -426,6 +494,7 @@ describe('ChangeWatchMiddleware', () => {
         expectPostProcessedOperations({ popProcessedOperations }, [
             {
                 originalOperation: ['deleteObjects', 'user', { displayName: 'Joe' }],
+                modifiedOperation: ["executeBatch", batch],
                 info: expectedPostInfo
             }
         ])

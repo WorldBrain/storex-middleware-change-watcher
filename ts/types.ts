@@ -30,10 +30,22 @@ export interface StorageOperationChangeInfo<Phase extends 'pre' | 'post'> {
     changes: StorageChange<Phase>[]
 }
 
+export interface StorageOperationEvent<Phase extends 'pre' | 'post'> {
+    originalOperation: any[]
+    modifiedOperation?: any[]
+    info: StorageOperationChangeInfo<Phase>
+}
+
 export interface StorageOperationWatcher {
     getInfoBeforeExecution(context: {
-        operation: any[], storageManager: StorageManager
+        operation: any[],
+        storageManager: StorageManager
     }): StorageOperationChangeInfo<'pre'> | Promise<StorageOperationChangeInfo<'pre'>>
+    transformOperation?(context: {
+        originalOperation: any[],
+        storageManager: StorageManager,
+        info: StorageOperationChangeInfo<'pre'>
+    }): Promise<any[] | void>
     getInfoAfterExecution(context: {
         preInfo: StorageOperationChangeInfo<'pre'>
         operation: any[], result: any, storageManager: StorageManager

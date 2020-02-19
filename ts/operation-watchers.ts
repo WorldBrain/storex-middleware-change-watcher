@@ -1,6 +1,6 @@
 import every from 'lodash/every'
-import StorageManager, { OperationBatch } from "@worldbrain/storex";
-import { StorageOperationWatcher, ModificationStorageChange, DeletionStorageChange, CreationStorageChange, StorageChange, StorageOperationChangeInfo } from "./types";
+import StorageManager, { OperationBatch, CollectionDefinition } from "@worldbrain/storex";
+import { StorageOperationWatcher, ModificationStorageChange, DeletionStorageChange, CreationStorageChange, StorageChange, StorageOperationChangeInfo, StorageChangePk } from "./types";
 import { getObjectPk } from "@worldbrain/storex/lib/utils";
 
 const createObject: StorageOperationWatcher = {
@@ -51,6 +51,43 @@ const updateObject: StorageOperationWatcher = {
             ]
         }
     },
+    async transformOperation(context) {
+        const batch: OperationBatch = []
+        let index = -1
+        for (const change of context.info.changes) {
+            if (change.type !== 'modify') {
+                throw new Error('Something weird happened in updateObject change watcher during operation transform')
+            }
+
+            const collectionDefinition = context.storageManager.registry.collections[change.collection]
+
+            if (typeof collectionDefinition.pkIndex === 'string') {
+                index += 1
+
+                batch.push({
+                    placeholder: `change-${index}`,
+                    operation: 'updateObjects',
+                    collection: change.collection,
+                    where: { [collectionDefinition.pkIndex]: { $in: change.pks } },
+                    updates: change.updates
+                })
+            } else {
+                for (const pk of change.pks) {
+                    index += 1
+
+                    batch.push({
+                        placeholder: `change-${index}`,
+                        operation: 'updateObjects',
+                        collection: change.collection,
+                        where: _getChangeWhere(pk, collectionDefinition),
+                        updates: change.updates
+                    })
+                }
+            }
+        }
+
+        return ['executeBatch', batch]
+    },
     async getInfoAfterExecution(context) {
         const { operation } = context
         const collection = operation[1]
@@ -88,6 +125,41 @@ const deleteObject: StorageOperationWatcher = {
         return {
             changes: [change]
         }
+    },
+    async transformOperation(context) {
+        const batch: OperationBatch = []
+        let index = -1
+        for (const change of context.info.changes) {
+            if (change.type !== 'delete') {
+                throw new Error('Something weird happened in updateObject change watcher during operation transform')
+            }
+
+            const collectionDefinition = context.storageManager.registry.collections[change.collection]
+
+            if (typeof collectionDefinition.pkIndex === 'string') {
+                index += 1
+
+                batch.push({
+                    placeholder: `change-${index}`,
+                    operation: 'deleteObjects',
+                    collection: change.collection,
+                    where: { [collectionDefinition.pkIndex]: { $in: change.pks } },
+                })
+            } else {
+                for (const pk of change.pks) {
+                    index += 1
+
+                    batch.push({
+                        placeholder: `change-${index}`,
+                        operation: 'deleteObjects',
+                        collection: change.collection,
+                        where: _getChangeWhere(pk, collectionDefinition),
+                    })
+                }
+            }
+        }
+
+        return ['executeBatch', batch]
     },
     async getInfoAfterExecution(context) {
         const { operation } = context
@@ -196,6 +268,20 @@ async function _findObjectsInvolvedInFilteredOperation(operation: any[], storage
     return storageManager.operation(
         'findObjects', collection, operation[2],
     )
+}
+
+export function _getChangeWhere(pk: StorageChangePk, collectionDefinition: CollectionDefinition): { [key: string]: { $in: any } } {
+    const where = {}
+    let index = -1
+    for (const pkFieldName of collectionDefinition.pkIndex!) {
+        index += 1
+        if (typeof pkFieldName !== 'string') {
+            throw new Error(`Collection ${collectionDefinition.name!} has primary type unsupported by change watch middleware`)
+        }
+        where[pkFieldName] = pk[index]
+    }
+
+    return where
 }
 
 export const DEFAULT_OPERATION_WATCHERS = {
