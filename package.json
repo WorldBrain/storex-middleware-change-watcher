@@ -1,0 +1,53 @@
+{
+    "name": "@worldbrain/storex-middleware-change-watcher",
+    "version": "0.1.0",
+    "description": "Change watching middleware for Storex",
+    "main": "lib/index.js",
+    "typings": "lib/index",
+    "scripts": {
+        "prepare": "tsc",
+        "prepare:watch": "npm run prepare -- -w",
+        "test": "mocha --require ts-node/register \"ts/**/*.test.ts\"",
+        "test:watch": "mocha -r source-map-support/register -r ts-node/register \"ts/**/*.test.ts\" --watch --watch-extensions ts",
+        "test:coverage": "rm -rf lib ; yarn prepare && nyc --reporter=html --reporter=text mocha 'lib/**/*.test.js'",
+        "format": "prettier --config prettier.config.js --write '**/*.{ts,js,tsx,jsx,css,md}'"
+    },
+    "husky": {
+        "hooks": {
+            "pre-commit": "pretty-quick --staged"
+        }
+    },
+    "keywords": [
+        "storage",
+        "graph",
+        "database",
+        "typescript"
+    ],
+    "author": "Vincent den Boer",
+    "dependencies": {
+        "eventemitter2": "^5.0.1",
+        "lodash": "^4.17.10"
+    },
+    "devDependencies": {
+        "@types/lodash": "^4.14.123",
+        "@types/mocha": "^2.2.44",
+        "@types/node": "^10.12.11",
+        "@types/simple-peer": "^6.1.6",
+        "@worldbrain/storex": "^0.3.6",
+        "@worldbrain/storex-backend-dexie": "^0.2.3",
+        "expect": "^24.9.0",
+        "fake-indexeddb": "^2.0.4",
+        "husky": "^3.0.5",
+        "mocha": "^4.0.1",
+        "prettier": "^1.19.1",
+        "pretty-quick": "^2.0.1",
+        "ts-node": "^7.0.1",
+        "typescript": "^3.7.3"
+    },
+    "peerDependencies": {
+        "@worldbrain/storex": "^0.3.6",
+        "@worldbrain/storex-backend-dexie": "^0.2.3",
+        "simple-peer": "^9.4.0",
+        "simple-signalling": "^0.3.0"
+    }
+}
