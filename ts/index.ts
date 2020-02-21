@@ -48,10 +48,16 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
             return executeNext()
         }
 
-        const preInfo = await watcher.getInfoBeforeExecution({
+        const rawPreInfo = await watcher.getInfoBeforeExecution({
             operation: originalOperation,
             storageManager: this.options.storageManager
         })
+        const preInfo: StorageOperationChangeInfo<'pre'> = {
+            changes: rawPreInfo.changes.filter(change => this.options.shouldWatchCollection(change.collection))
+        }
+        if (!preInfo.changes.length) {
+            return executeNext()
+        }
         if (watcher.transformOperation) {
             modifiedOperation = (await watcher.transformOperation({
                 originalOperation,
@@ -66,7 +72,7 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
 
         const postInfo = await watcher.getInfoAfterExecution({
             operation: originalOperation,
-            preInfo,
+            preInfo: rawPreInfo,
             result,
             storageManager: this.options.storageManager,
         })
