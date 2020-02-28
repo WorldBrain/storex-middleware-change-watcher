@@ -1,7 +1,7 @@
 import every from 'lodash/every'
 import StorageManager, { OperationBatch, CollectionDefinition } from "@worldbrain/storex";
 import { StorageOperationWatcher, ModificationStorageChange, DeletionStorageChange, CreationStorageChange, StorageChange, StorageOperationChangeInfo, StorageChangePk } from "./types";
-import { getObjectPk } from "@worldbrain/storex/lib/utils";
+import { getObjectPk, getObjectWithoutPk } from "@worldbrain/storex/lib/utils";
 
 const createObject: StorageOperationWatcher = {
     getInfoBeforeExecution(context) {
@@ -12,7 +12,7 @@ const createObject: StorageOperationWatcher = {
         const change: CreationStorageChange<'pre'> = {
             type: 'create',
             collection,
-            values,
+            values: getObjectWithoutPk(values, collection, context.storageManager.registry),
             ...(hasPk ? { pk } : {})
         }
         return {
@@ -21,11 +21,12 @@ const createObject: StorageOperationWatcher = {
     },
     getInfoAfterExecution(context) {
         const { operation } = context
+        const [_, collection] = operation
         const change: CreationStorageChange<'post'> = {
             type: 'create',
             collection: operation[1],
-            pk: context.result.object.id,
-            values: operation[2],
+            pk: getObjectPk(context.result.object, collection, context.storageManager.registry),
+            values: getObjectWithoutPk(operation[2], collection, context.storageManager.registry),
         }
         return {
             changes: [change]

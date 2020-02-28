@@ -8,8 +8,8 @@ import { ChangeWatchMiddlewareSettings, ChangeWatchMiddleware } from "."
 import { StorageOperationChangeInfo, StorageOperationEvent } from "./types"
 
 interface ProcessedTestOperations {
-    preproccessed: Array<StorageOperationEvent<'pre'>>
-    postproccessed: Array<StorageOperationEvent<'post'>>
+    preprocessed: Array<StorageOperationEvent<'pre'>>
+    postprocessed: Array<StorageOperationEvent<'post'>>
 }
 interface TestSetup {
     storageManager: StorageManager
@@ -41,17 +41,17 @@ async function setupTest(options?: {
     })
     await storageManager.finishInitialization()
 
-    const operations: ProcessedTestOperations = { preproccessed: [], postproccessed: [] }
+    const operations: ProcessedTestOperations = { preprocessed: [], postprocessed: [] }
     const changeWatchMiddleware = new ChangeWatchMiddleware({
         storageManager,
         shouldWatchCollection: options?.shouldWatchCollection ?? (() => true),
         operationWatchers: options?.operationWatchers,
         getCollectionDefinition: (collection) => storageManager.registry.collections[collection],
         preprocessOperation: (options?.preprocesses ?? true) ? (event => {
-            operations.preproccessed.push(event)
+            operations.preprocessed.push(event)
         }) : undefined,
         postprocessOperation: (options?.postprocesses ?? true) ? (event => {
-            operations.postproccessed.push(event)
+            operations.postprocessed.push(event)
         }) : undefined
     })
     storageManager.setMiddleware([changeWatchMiddleware, ...(options?.extraMiddleware ?? [])])
@@ -66,8 +66,8 @@ async function setupTest(options?: {
     }
 }
 
-async function executeTestCreate(storageManager: StorageManager, options?: { id?: number | string }) {
-    const objectValues = { displayName: 'John Doe' }
+async function executeTestCreate(storageManager: StorageManager, options?: { id?: number | string, objectValues?: any }) {
+    const objectValues = options?.objectValues ?? { displayName: 'John Doe' }
     const { object } = await storageManager
         .collection('user')
         .createObject({ ...objectValues, id: options?.id })
@@ -84,31 +84,38 @@ async function verifiyTestCreate(storageManager: StorageManager, options: { obje
 
 async function testCreateWithoutLogging(setup: Pick<TestSetup, 'storageManager' | 'popProcessedOperations'>) {
     const creation = await executeTestCreate(setup.storageManager)
-    expect(setup.popProcessedOperations('preproccessed')).toEqual([])
-    expect(setup.popProcessedOperations('postproccessed')).toEqual([])
+    expect(setup.popProcessedOperations('preprocessed')).toEqual([])
+    expect(setup.popProcessedOperations('postprocessed')).toEqual([])
     await verifiyTestCreate(setup.storageManager, creation)
 }
 
-async function insertTestObjects(setup: Pick<TestSetup, 'storageManager' | 'popProcessedOperations'>) {
+async function insertTestObjects(setup: Pick<TestSetup, 'storageManager' | 'popProcessedOperations'>, options?: { compoundPk?: boolean }) {
     const { object: object1 } = await setup.storageManager
         .collection('user')
-        .createObject({ displayName: 'Joe' })
+        .createObject(options?.compoundPk ? { first: 'Joe', last: 'Doe', foo: 'Bla' } : { displayName: 'Joe' })
     const { object: object2 } = await setup.storageManager
         .collection('user')
-        .createObject({ displayName: 'Bob' })
+        .createObject(options?.compoundPk ? { first: 'Bob', last: 'Doe', foo: 'Bla' } : { displayName: 'Bob' })
 
-    setup.popProcessedOperations('preproccessed')
-    setup.popProcessedOperations('postproccessed')
+    setup.popProcessedOperations('preprocessed')
+    setup.popProcessedOperations('postprocessed')
 
     return { object1, object2 }
 }
 
-function expectPreProcessedOperations(setup: Pick<TestSetup, 'popProcessedOperations'>, expected: ProcessedTestOperations['preproccessed']) {
-    expect(setup.popProcessedOperations('preproccessed')).toEqual(expected)
+function expectPreProcessedOperations(setup: Pick<TestSetup, 'popProcessedOperations'>, expected: ProcessedTestOperations['preprocessed']) {
+    expect(setup.popProcessedOperations('preprocessed')).toEqual(expected)
 }
 
-function expectPostProcessedOperations(setup: Pick<TestSetup, 'popProcessedOperations'>, expected: ProcessedTestOperations['postproccessed']) {
-    expect(setup.popProcessedOperations('postproccessed')).toEqual(expected)
+function expectPostProcessedOperations(setup: Pick<TestSetup, 'popProcessedOperations'>, expected: ProcessedTestOperations['postprocessed']) {
+    expect(setup.popProcessedOperations('postprocessed')).toEqual(expected)
+}
+
+function expectProcessedOperations(setup: Pick<TestSetup, 'popProcessedOperations'>, expected: ProcessedTestOperations) {
+    expect({
+        preprocessed: setup.popProcessedOperations('preprocessed'),
+        postprocessed: setup.popProcessedOperations('postprocessed'),
+    }).toEqual(expected)
 }
 
 describe('ChangeWatchMiddleware', () => {
@@ -148,7 +155,7 @@ describe('ChangeWatchMiddleware', () => {
 
         const expectedPreInfo: StorageOperationChangeInfo<'pre'> = {
             changes: [
-                { type: 'create', collection: 'user', pk: 5, values: { ...creation.objectValues, id: 5 } }
+                { type: 'create', collection: 'user', pk: 5, values: { ...creation.objectValues } }
             ]
         }
         expectPreProcessedOperations({ popProcessedOperations }, [
@@ -159,7 +166,7 @@ describe('ChangeWatchMiddleware', () => {
         ])
         const expectedPostInfo: StorageOperationChangeInfo<'post'> = {
             changes: [
-                { type: 'create', collection: 'user', pk: creation.object.id, values: { ...creation.objectValues, id: 5 } }
+                { type: 'create', collection: 'user', pk: creation.object.id, values: { ...creation.objectValues } }
             ]
         }
         expectPostProcessedOperations({ popProcessedOperations }, [
@@ -169,6 +176,41 @@ describe('ChangeWatchMiddleware', () => {
             }
         ])
 
+        await verifiyTestCreate(storageManager, creation)
+    })
+
+    it('should correctly report creations with a compound primary key', async () => {
+        const { storageManager, popProcessedOperations } = await setupTest({
+            userFields: {
+                first: { type: 'string' },
+                last: { type: 'string' },
+                foo: { type: 'string' },
+            },
+            userIndices: [{ field: ['first', 'last'], pk: true }, { field: 'last' }]
+        })
+        const creation = await executeTestCreate(storageManager, { objectValues: { first: 'Bob', last: 'Doe', foo: 'Bla' } })
+        expectProcessedOperations({ popProcessedOperations }, {
+            preprocessed: [
+                {
+                    originalOperation: ['createObject', 'user', { ...creation.objectValues }],
+                    info: {
+                        changes: [
+                            { type: 'create', collection: 'user', pk: ['Bob', 'Doe'], values: { foo: 'Bla' } }
+                        ]
+                    }
+                }
+            ],
+            postprocessed: [
+                {
+                    originalOperation: ['createObject', 'user', { ...creation.objectValues }],
+                    info: {
+                        changes: [
+                            { type: 'create', collection: 'user', pk: ['Bob', 'Doe'], values: { foo: 'Bla' } }
+                        ]
+                    }
+                }
+            ],
+        })
         await verifiyTestCreate(storageManager, creation)
     })
 
@@ -199,7 +241,7 @@ describe('ChangeWatchMiddleware', () => {
                 where: { id: { $in: [object1.id] } },
             },
         ]
-        const expectedPreprocessedOperations: ProcessedTestOperations['preproccessed'] = [
+        const expectedPreprocessedOperations: ProcessedTestOperations['preprocessed'] = [
             {
                 originalOperation: ['updateObject', 'user', { id: object1.id }, { displayName: 'Jon' }],
                 modifiedOperation: ["executeBatch", batch],
@@ -229,6 +271,59 @@ describe('ChangeWatchMiddleware', () => {
             { id: object1.id, displayName: 'Jon' },
             { id: object2.id, displayName: 'Bob' },
         ])
+    })
+
+    it('should correctly report updateObject by compound primary key', async () => {
+        const { storageManager, popProcessedOperations } = await setupTest({
+            userFields: {
+                first: { type: 'string' },
+                last: { type: 'string' },
+                foo: { type: 'string' },
+            },
+            userIndices: [{ field: ['first', 'last'], pk: true }, { field: 'last' }]
+        })
+        const { object1, object2 } = await insertTestObjects({ storageManager, popProcessedOperations }, { compoundPk: true })
+
+        const where = {
+            first: object1.first,
+            last: object1.last,
+        }
+        const updates = { foo: 'Green' }
+        await storageManager.operation('updateObject', 'user', { ...where }, { ...updates })
+
+        const batch: OperationBatch = [
+            {
+                collection: "user",
+                operation: "updateObjects",
+                placeholder: "change-0",
+                where,
+                updates,
+            },
+        ]
+        expectProcessedOperations({ popProcessedOperations }, {
+            preprocessed: [
+                {
+                    originalOperation: ['updateObject', 'user', where, updates],
+                    modifiedOperation: ['executeBatch', batch],
+                    info: {
+                        changes: [
+                            { type: 'modify', collection: 'user', pks: [['Joe', 'Doe']], where, updates }
+                        ]
+                    }
+                }
+            ],
+            postprocessed: [
+                {
+                    originalOperation: ['updateObject', 'user', where, updates],
+                    modifiedOperation: ['executeBatch', batch],
+                    info: {
+                        changes: [
+                            { type: 'modify', collection: 'user', pks: [['Joe', 'Doe']], where, updates }
+                        ]
+                    }
+                }
+            ],
+        })
     })
 
     it('should correctly report modifications by updateObjects filtered by PK', async () => {
@@ -345,6 +440,65 @@ describe('ChangeWatchMiddleware', () => {
             { id: object1.id, displayName: 'Jon' },
             { id: object2.id, displayName: 'Bob' },
         ])
+    })
+
+    it('should correctly report updateObjects for collections with compound primary key', async () => {
+        const { storageManager, popProcessedOperations } = await setupTest({
+            userFields: {
+                first: { type: 'string' },
+                last: { type: 'string' },
+                foo: { type: 'string' },
+            },
+            userIndices: [{ field: ['first', 'last'], pk: true }, { field: 'last' }]
+        })
+        const { object1, object2 } = await insertTestObjects({ storageManager, popProcessedOperations }, { compoundPk: true })
+
+        const where = {
+            last: object1.last,
+        }
+        const updates = { foo: 'Green' }
+        await storageManager.operation('updateObjects', 'user', { ...where }, { ...updates })
+
+        const batch: OperationBatch = [
+            {
+                collection: "user",
+                operation: "updateObjects",
+                placeholder: "change-0",
+                where: { ...where, first: 'Bob' },
+                updates,
+            },
+            {
+                collection: "user",
+                operation: "updateObjects",
+                placeholder: "change-1",
+                where: { ...where, first: 'Joe' },
+                updates,
+            },
+        ]
+        expectProcessedOperations({ popProcessedOperations }, {
+            preprocessed: [
+                {
+                    originalOperation: ['updateObjects', 'user', where, updates],
+                    modifiedOperation: ['executeBatch', batch],
+                    info: {
+                        changes: [
+                            { type: 'modify', collection: 'user', pks: [['Bob', 'Doe'], ['Joe', 'Doe']], where, updates }
+                        ]
+                    }
+                }
+            ],
+            postprocessed: [
+                {
+                    originalOperation: ['updateObjects', 'user', where, updates],
+                    modifiedOperation: ['executeBatch', batch],
+                    info: {
+                        changes: [
+                            { type: 'modify', collection: 'user', pks: [['Bob', 'Doe'], ['Joe', 'Doe']], where, updates }
+                        ]
+                    }
+                }
+            ],
+        })
     })
 
     it('should correctly report deletions by deleteObject filtered by PK', async () => {
@@ -552,6 +706,62 @@ describe('ChangeWatchMiddleware', () => {
             { id: object1.id, displayName: 'Jack' },
             { id: batchResult.info.jane.object.id, displayName: 'Jane' }
         ])
+    })
+
+    it('should correctly report deleteObjects for collections with compound primary key', async () => {
+        const { storageManager, popProcessedOperations } = await setupTest({
+            userFields: {
+                first: { type: 'string' },
+                last: { type: 'string' },
+                foo: { type: 'string' },
+            },
+            userIndices: [{ field: ['first', 'last'], pk: true }, { field: 'last' }]
+        })
+        const { object1, object2 } = await insertTestObjects({ storageManager, popProcessedOperations }, { compoundPk: true })
+
+        const where = {
+            last: object1.last,
+        }
+        await storageManager.operation('deleteObjects', 'user', { ...where })
+
+        const batch: OperationBatch = [
+            {
+                collection: "user",
+                operation: "deleteObjects",
+                placeholder: "change-0",
+                where: { ...where, first: 'Bob' },
+            },
+            {
+                collection: "user",
+                operation: "deleteObjects",
+                placeholder: "change-1",
+                where: { ...where, first: 'Joe' },
+            },
+        ]
+        expectProcessedOperations({ popProcessedOperations }, {
+            preprocessed: [
+                {
+                    originalOperation: ['deleteObjects', 'user', where],
+                    modifiedOperation: ['executeBatch', batch],
+                    info: {
+                        changes: [
+                            { type: 'delete', collection: 'user', pks: [['Bob', 'Doe'], ['Joe', 'Doe']], where }
+                        ]
+                    }
+                }
+            ],
+            postprocessed: [
+                {
+                    originalOperation: ['deleteObjects', 'user', where],
+                    modifiedOperation: ['executeBatch', batch],
+                    info: {
+                        changes: [
+                            { type: 'delete', collection: 'user', pks: [['Bob', 'Doe'], ['Joe', 'Doe']], where }
+                        ]
+                    }
+                }
+            ],
+        })
     })
 
     it('should let operations through if not enabled', async () => {
