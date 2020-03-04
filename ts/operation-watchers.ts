@@ -274,7 +274,7 @@ async function _findObjectsInvolvedInFilteredOperation(operation: any[], storage
 export function _getChangeWhere(pk: StorageChangePk, collectionDefinition: CollectionDefinition): { [key: string]: { $in: any } } {
     const where = {}
     let index = -1
-    for (const pkFieldName of collectionDefinition.pkIndex!) {
+    for (const pkFieldName of collectionDefinition.pkIndex! as Array<unknown>) {
         index += 1
         if (typeof pkFieldName !== 'string') {
             throw new Error(`Collection ${collectionDefinition.name!} has primary type unsupported by change watch middleware`)
