@@ -1,15 +1,27 @@
 import cloneDeep from 'lodash/cloneDeep'
-import StorageManager, { CollectionDefinition } from "@worldbrain/storex";
-import { StorageMiddlewareContext, StorageMiddleware } from "@worldbrain/storex/lib/types/middleware";
-import { StorageOperationChangeInfo, StorageOperationWatcher, StorageOperationEvent } from "./types";
-import { DEFAULT_OPERATION_WATCHERS } from "./operation-watchers";
+import StorageManager, { CollectionDefinition } from '@worldbrain/storex'
+import {
+    StorageMiddlewareContext,
+    StorageMiddleware,
+} from '@worldbrain/storex/lib/types/middleware'
+import {
+    StorageOperationChangeInfo,
+    StorageOperationWatcher,
+    StorageOperationEvent,
+    ShouldWatchCollection,
+} from './types'
+import { DEFAULT_OPERATION_WATCHERS } from './operation-watchers'
 
 export interface ChangeWatchMiddlewareSettings {
-    shouldWatchCollection(collection: string): boolean
+    shouldWatchCollection: ShouldWatchCollection
     operationWatchers?: { [name: string]: StorageOperationWatcher }
     getCollectionDefinition?(collection: string): CollectionDefinition
-    preprocessOperation?(context: StorageOperationEvent<'pre'>): void | Promise<void>
-    postprocessOperation?(context: StorageOperationEvent<'post'>): void | Promise<void>
+    preprocessOperation?(
+        context: StorageOperationEvent<'pre'>,
+    ): void | Promise<void>
+    postprocessOperation?(
+        context: StorageOperationEvent<'post'>,
+    ): void | Promise<void>
 }
 export class ChangeWatchMiddleware implements StorageMiddleware {
     enabled = true
@@ -17,12 +29,17 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
     getCollectionDefinition: (collection: string) => CollectionDefinition
     operationWatchers: { [name: string]: StorageOperationWatcher }
 
-    constructor(private options: ChangeWatchMiddlewareSettings & {
-        storageManager: StorageManager
-    }) {
-        this.getCollectionDefinition = options.getCollectionDefinition ??
-            ((collection) => options.storageManager.registry.collections[collection])
-        this.operationWatchers = options.operationWatchers ?? DEFAULT_OPERATION_WATCHERS
+    constructor(
+        private options: ChangeWatchMiddlewareSettings & {
+            storageManager: StorageManager
+        },
+    ) {
+        this.getCollectionDefinition =
+            options.getCollectionDefinition ??
+            (collection =>
+                options.storageManager.registry.collections[collection])
+        this.operationWatchers =
+            options.operationWatchers ?? DEFAULT_OPERATION_WATCHERS
     }
 
     async process(context: StorageMiddlewareContext) {
@@ -36,7 +53,7 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
                 operation: modifiedOperation || cloneDeep(originalOperation),
                 extraData: {
                     changeInfo: preInfo,
-                }
+                },
             })
         }
         if (!this.enabled) {
@@ -48,25 +65,42 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
             return executeNext()
         }
 
+        const shouldWatchOperation = watcher.shouldWatchOperation({
+            operation: originalOperation,
+            shouldWatchCollection: this.options.shouldWatchCollection,
+        })
+        if (!shouldWatchOperation) {
+            return executeNext()
+        }
+
         const rawPreInfo = await watcher.getInfoBeforeExecution({
             operation: originalOperation,
-            storageManager: this.options.storageManager
+            storageManager: this.options.storageManager,
+            shouldWatchCollection: this.options.shouldWatchCollection,
         })
         const preInfo: StorageOperationChangeInfo<'pre'> = {
-            changes: rawPreInfo.changes.filter(change => this.options.shouldWatchCollection(change.collection))
+            changes: rawPreInfo.changes.filter(change =>
+                this.options.shouldWatchCollection(change.collection),
+            ),
         }
         if (!preInfo.changes.length) {
             return executeNext()
         }
         if (watcher.transformOperation) {
-            modifiedOperation = (await watcher.transformOperation({
-                originalOperation,
-                storageManager: this.options.storageManager,
-                info: preInfo,
-            })) || undefined
+            modifiedOperation =
+                (await watcher.transformOperation({
+                    originalOperation,
+                    storageManager: this.options.storageManager,
+                    info: preInfo,
+                    shouldWatchCollection: this.options.shouldWatchCollection,
+                })) || undefined
         }
         if (this.options.preprocessOperation) {
-            await this.options.preprocessOperation({ originalOperation, modifiedOperation, info: preInfo })
+            await this.options.preprocessOperation({
+                originalOperation,
+                modifiedOperation,
+                info: preInfo,
+            })
         }
         const result = await executeNext(preInfo)
 
@@ -75,9 +109,14 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
             preInfo: rawPreInfo,
             result,
             storageManager: this.options.storageManager,
+            shouldWatchCollection: this.options.shouldWatchCollection,
         })
         if (this.options.postprocessOperation) {
-            await this.options.postprocessOperation({ originalOperation, modifiedOperation, info: postInfo })
+            await this.options.postprocessOperation({
+                originalOperation,
+                modifiedOperation,
+                info: postInfo,
+            })
         }
         return result
     }

@@ -1,22 +1,45 @@
 import every from 'lodash/every'
-import StorageManager, { OperationBatch, CollectionDefinition } from "@worldbrain/storex";
-import { StorageOperationWatcher, ModificationStorageChange, DeletionStorageChange, CreationStorageChange, StorageChange, StorageOperationChangeInfo, StorageChangePk } from "./types";
-import { getObjectPk, getObjectWithoutPk } from "@worldbrain/storex/lib/utils";
+import StorageManager, {
+    OperationBatch,
+    CollectionDefinition,
+} from '@worldbrain/storex'
+import {
+    StorageOperationWatcher,
+    ModificationStorageChange,
+    DeletionStorageChange,
+    CreationStorageChange,
+    StorageChange,
+    StorageOperationChangeInfo,
+    StorageChangePk,
+} from './types'
+import { getObjectPk, getObjectWithoutPk } from '@worldbrain/storex/lib/utils'
 
 const createObject: StorageOperationWatcher = {
+    shouldWatchOperation(context) {
+        const collection = context.operation[1]
+        return context.shouldWatchCollection(collection)
+    },
     getInfoBeforeExecution(context) {
         const { operation } = context
         const [_, collection, values] = operation
-        const pk = getObjectPk(values, collection, context.storageManager.registry)
+        const pk = getObjectPk(
+            values,
+            collection,
+            context.storageManager.registry,
+        )
         const hasPk = !!pk && (pk instanceof Array ? every(pk) : true)
         const change: CreationStorageChange<'pre'> = {
             type: 'create',
             collection,
-            values: getObjectWithoutPk(values, collection, context.storageManager.registry),
-            ...(hasPk ? { pk } : {})
+            values: getObjectWithoutPk(
+                values,
+                collection,
+                context.storageManager.registry,
+            ),
+            ...(hasPk ? { pk } : {}),
         }
         return {
-            changes: [change]
+            changes: [change],
         }
     },
     getInfoAfterExecution(context) {
@@ -25,31 +48,50 @@ const createObject: StorageOperationWatcher = {
         const change: CreationStorageChange<'post'> = {
             type: 'create',
             collection: operation[1],
-            pk: getObjectPk(context.result.object, collection, context.storageManager.registry),
-            values: getObjectWithoutPk(operation[2], collection, context.storageManager.registry),
+            pk: getObjectPk(
+                context.result.object,
+                collection,
+                context.storageManager.registry,
+            ),
+            values: getObjectWithoutPk(
+                operation[2],
+                collection,
+                context.storageManager.registry,
+            ),
         }
         return {
-            changes: [change]
+            changes: [change],
         }
     },
 }
 
 const updateObject: StorageOperationWatcher = {
+    shouldWatchOperation(context) {
+        const collection = context.operation[1]
+        return context.shouldWatchCollection(collection)
+    },
     async getInfoBeforeExecution(context) {
         const { operation } = context
         const collection = operation[1]
-        const affectedObjects: any[] = await _findObjectsInvolvedInFilteredOperation(operation, context.storageManager)
+        const affectedObjects: any[] = await _findObjectsInvolvedInFilteredOperation(
+            operation,
+            context.storageManager,
+        )
         const change: ModificationStorageChange<'pre'> = {
             type: 'modify',
             collection: operation[1],
             where: operation[2],
             updates: operation[3],
-            pks: affectedObjects.map(object => getObjectPk(object, collection, context.storageManager.registry)),
+            pks: affectedObjects.map(object =>
+                getObjectPk(
+                    object,
+                    collection,
+                    context.storageManager.registry,
+                ),
+            ),
         }
         return {
-            changes: [
-                change
-            ]
+            changes: [change],
         }
     },
     async transformOperation(context) {
@@ -57,10 +99,13 @@ const updateObject: StorageOperationWatcher = {
         let index = -1
         for (const change of context.info.changes) {
             if (change.type !== 'modify') {
-                throw new Error('Something weird happened in updateObject change watcher during operation transform')
+                throw new Error(
+                    'Something weird happened in updateObject change watcher during operation transform',
+                )
             }
 
-            const collectionDefinition = context.storageManager.registry.collections[change.collection]
+            const collectionDefinition =
+                context.storageManager.registry.collections[change.collection]
 
             if (typeof collectionDefinition.pkIndex === 'string') {
                 index += 1
@@ -69,8 +114,10 @@ const updateObject: StorageOperationWatcher = {
                     placeholder: `change-${index}`,
                     operation: 'updateObjects',
                     collection: change.collection,
-                    where: { [collectionDefinition.pkIndex]: { $in: change.pks } },
-                    updates: change.updates
+                    where: {
+                        [collectionDefinition.pkIndex]: { $in: change.pks },
+                    },
+                    updates: change.updates,
                 })
             } else {
                 for (const pk of change.pks) {
@@ -81,7 +128,7 @@ const updateObject: StorageOperationWatcher = {
                         operation: 'updateObjects',
                         collection: change.collection,
                         where: _getChangeWhere(pk, collectionDefinition),
-                        updates: change.updates
+                        updates: change.updates,
                     })
                 }
             }
@@ -95,7 +142,9 @@ const updateObject: StorageOperationWatcher = {
 
         const preInfoChange = context.preInfo.changes[0]
         if (preInfoChange.type !== 'modify') {
-            throw new Error('Something weird happened in updateObject change watcher')
+            throw new Error(
+                'Something weird happened in updateObject change watcher',
+            )
         }
         const change: ModificationStorageChange<'post'> = {
             type: 'modify',
@@ -103,28 +152,39 @@ const updateObject: StorageOperationWatcher = {
             where: operation[2],
             updates: operation[3],
             pks: preInfoChange.pks,
-        };
+        }
         return {
-            changes: [
-                change
-            ]
+            changes: [change],
         }
     },
 }
 
 const deleteObject: StorageOperationWatcher = {
+    shouldWatchOperation(context) {
+        const collection = context.operation[1]
+        return context.shouldWatchCollection(collection)
+    },
     async getInfoBeforeExecution(context) {
         const { operation } = context
         const collection = operation[1]
-        const affectedObjects: any[] = await _findObjectsInvolvedInFilteredOperation(operation, context.storageManager)
+        const affectedObjects: any[] = await _findObjectsInvolvedInFilteredOperation(
+            operation,
+            context.storageManager,
+        )
         const change: DeletionStorageChange<'pre'> = {
             type: 'delete',
             collection: operation[1],
             where: operation[2],
-            pks: affectedObjects.map(object => getObjectPk(object, collection, context.storageManager.registry)),
+            pks: affectedObjects.map(object =>
+                getObjectPk(
+                    object,
+                    collection,
+                    context.storageManager.registry,
+                ),
+            ),
         }
         return {
-            changes: [change]
+            changes: [change],
         }
     },
     async transformOperation(context) {
@@ -132,10 +192,13 @@ const deleteObject: StorageOperationWatcher = {
         let index = -1
         for (const change of context.info.changes) {
             if (change.type !== 'delete') {
-                throw new Error('Something weird happened in updateObject change watcher during operation transform')
+                throw new Error(
+                    'Something weird happened in updateObject change watcher during operation transform',
+                )
             }
 
-            const collectionDefinition = context.storageManager.registry.collections[change.collection]
+            const collectionDefinition =
+                context.storageManager.registry.collections[change.collection]
 
             if (typeof collectionDefinition.pkIndex === 'string') {
                 index += 1
@@ -144,7 +207,9 @@ const deleteObject: StorageOperationWatcher = {
                     placeholder: `change-${index}`,
                     operation: 'deleteObjects',
                     collection: change.collection,
-                    where: { [collectionDefinition.pkIndex]: { $in: change.pks } },
+                    where: {
+                        [collectionDefinition.pkIndex]: { $in: change.pks },
+                    },
                 })
             } else {
                 for (const pk of change.pks) {
@@ -168,23 +233,32 @@ const deleteObject: StorageOperationWatcher = {
 
         const preInfoChange = context.preInfo.changes[0]
         if (preInfoChange.type !== 'delete') {
-            throw new Error('Something weird happened in updateObject change watcher')
+            throw new Error(
+                'Something weird happened in updateObject change watcher',
+            )
         }
         const change: DeletionStorageChange<'post'> = {
             type: 'delete',
             collection,
             where: operation[2],
             pks: preInfoChange.pks,
-        };
+        }
         return {
-            changes: [
-                change
-            ]
+            changes: [change],
         }
     },
 }
 
 const executeBatch: StorageOperationWatcher = {
+    shouldWatchOperation(context) {
+        const batch = context.operation[1] as OperationBatch
+        for (const operation of batch) {
+            if (context.shouldWatchCollection(operation.collection)) {
+                return true
+            }
+        }
+        return false
+    },
     async getInfoBeforeExecution(context) {
         const batch: OperationBatch = context.operation[1]
         const changes: StorageChange<'pre'>[] = []
@@ -193,32 +267,66 @@ const executeBatch: StorageOperationWatcher = {
         }
 
         for (const batchOperation of batch) {
-            if (!batchOperation.placeholder && batchOperation.operation === 'createObject') {
-                throw new Error(`ChangeWatchMiddleware cannot handle executeBatch createObject operations without placeholders`)
+            if (!context.shouldWatchCollection(batchOperation.collection)) {
+                continue
+            }
+            if (
+                !batchOperation.placeholder &&
+                batchOperation.operation === 'createObject'
+            ) {
+                throw new Error(
+                    `ChangeWatchMiddleware cannot handle executeBatch createObject operations without placeholders`,
+                )
             }
 
             if (batchOperation.operation === 'createObject') {
-                appendInfo(await createObject.getInfoBeforeExecution({
-                    operation: ['createObject', batchOperation.collection, batchOperation.args],
-                    storageManager: context.storageManager,
-                }))
+                appendInfo(
+                    await createObject.getInfoBeforeExecution({
+                        operation: [
+                            'createObject',
+                            batchOperation.collection,
+                            batchOperation.args,
+                        ],
+                        storageManager: context.storageManager,
+                        shouldWatchCollection: context.shouldWatchCollection,
+                    }),
+                )
             } else if (batchOperation.operation === 'updateObjects') {
-                appendInfo(await updateObject.getInfoBeforeExecution({
-                    operation: ['updateObjects', batchOperation.collection, batchOperation.where, batchOperation.updates],
-                    storageManager: context.storageManager
-                }))
+                appendInfo(
+                    await updateObject.getInfoBeforeExecution({
+                        operation: [
+                            'updateObjects',
+                            batchOperation.collection,
+                            batchOperation.where,
+                            batchOperation.updates,
+                        ],
+                        storageManager: context.storageManager,
+                        shouldWatchCollection: context.shouldWatchCollection,
+                    }),
+                )
             } else if (batchOperation.operation === 'deleteObjects') {
-                appendInfo(await deleteObject.getInfoBeforeExecution({
-                    operation: ['deleteObjects', batchOperation.collection, batchOperation.where],
-                    storageManager: context.storageManager,
-                }))
+                appendInfo(
+                    await deleteObject.getInfoBeforeExecution({
+                        operation: [
+                            'deleteObjects',
+                            batchOperation.collection,
+                            batchOperation.where,
+                        ],
+                        storageManager: context.storageManager,
+                        shouldWatchCollection: context.shouldWatchCollection,
+                    }),
+                )
             } else {
-                throw new Error(`Change watcher middleware encountered unknown batch operation: ${(batchOperation as any).operation}`)
+                throw new Error(
+                    `Change watcher middleware encountered unknown batch operation: ${
+                        (batchOperation as any).operation
+                    }`,
+                )
             }
         }
 
         return {
-            changes
+            changes,
         }
     },
     async getInfoAfterExecution(context) {
@@ -230,54 +338,91 @@ const executeBatch: StorageOperationWatcher = {
 
         let index = -1
         for (const batchOperation of batch) {
+            if (!context.shouldWatchCollection(batchOperation.collection)) {
+                continue
+            }
+
             index += 1
 
             if (batchOperation.operation === 'createObject') {
-                appendInfo(await createObject.getInfoAfterExecution({
-                    operation: ['createObject', batchOperation.collection, batchOperation.args],
-                    preInfo: { changes: [context.preInfo.changes[index]] },
-                    storageManager: context.storageManager,
-                    result: context.result.info[batchOperation.placeholder!],
-                }))
+                appendInfo(
+                    await createObject.getInfoAfterExecution({
+                        operation: [
+                            'createObject',
+                            batchOperation.collection,
+                            batchOperation.args,
+                        ],
+                        preInfo: { changes: [context.preInfo.changes[index]] },
+                        storageManager: context.storageManager,
+                        result:
+                            context.result.info[batchOperation.placeholder!],
+                        shouldWatchCollection: context.shouldWatchCollection,
+                    }),
+                )
             } else if (batchOperation.operation === 'updateObjects') {
-                appendInfo(await updateObject.getInfoAfterExecution({
-                    operation: ['updateObjects', batchOperation.collection, batchOperation.where, batchOperation.updates],
-                    preInfo: { changes: [context.preInfo.changes[index]] },
-                    storageManager: context.storageManager,
-                    result: context.result,
-                }))
+                appendInfo(
+                    await updateObject.getInfoAfterExecution({
+                        operation: [
+                            'updateObjects',
+                            batchOperation.collection,
+                            batchOperation.where,
+                            batchOperation.updates,
+                        ],
+                        preInfo: { changes: [context.preInfo.changes[index]] },
+                        storageManager: context.storageManager,
+                        result: context.result,
+                        shouldWatchCollection: context.shouldWatchCollection,
+                    }),
+                )
             } else if (batchOperation.operation === 'deleteObjects') {
-                appendInfo(await deleteObject.getInfoAfterExecution({
-                    operation: ['deleteObjects', batchOperation.collection, batchOperation.where],
-                    preInfo: { changes: [context.preInfo.changes[index]] },
-                    storageManager: context.storageManager,
-                    result: context.result,
-                }))
+                appendInfo(
+                    await deleteObject.getInfoAfterExecution({
+                        operation: [
+                            'deleteObjects',
+                            batchOperation.collection,
+                            batchOperation.where,
+                        ],
+                        preInfo: { changes: [context.preInfo.changes[index]] },
+                        storageManager: context.storageManager,
+                        result: context.result,
+                        shouldWatchCollection: context.shouldWatchCollection,
+                    }),
+                )
             } else {
-                throw new Error(`Change watcher middleware encountered unknown batch operation: ${(batchOperation as any).operation}`)
+                throw new Error(
+                    `Change watcher middleware encountered unknown batch operation: ${
+                        (batchOperation as any).operation
+                    }`,
+                )
             }
         }
 
         return {
-            changes
+            changes,
         }
     },
 }
 
-async function _findObjectsInvolvedInFilteredOperation(operation: any[], storageManager: StorageManager) {
+async function _findObjectsInvolvedInFilteredOperation(
+    operation: any[],
+    storageManager: StorageManager,
+) {
     const collection = operation[1]
-    return storageManager.operation(
-        'findObjects', collection, operation[2],
-    )
+    return storageManager.operation('findObjects', collection, operation[2])
 }
 
-export function _getChangeWhere(pk: StorageChangePk, collectionDefinition: CollectionDefinition): { [key: string]: { $in: any } } {
+export function _getChangeWhere(
+    pk: StorageChangePk,
+    collectionDefinition: CollectionDefinition,
+): { [key: string]: { $in: any } } {
     const where = {}
     let index = -1
     for (const pkFieldName of collectionDefinition.pkIndex! as Array<unknown>) {
         index += 1
         if (typeof pkFieldName !== 'string') {
-            throw new Error(`Collection ${collectionDefinition.name!} has primary type unsupported by change watch middleware`)
+            throw new Error(
+                `Collection ${collectionDefinition.name!} has primary type unsupported by change watch middleware`,
+            )
         }
         where[pkFieldName] = pk[index]
     }
