@@ -5,7 +5,7 @@ export type StorageChange<Phase extends 'pre' | 'post'> =
     | ModificationStorageChange<Phase>
     | DeletionStorageChange<Phase>
 
-export type StorageChangePk = string | number | { [key: string]: any }
+export type StorageChangePk = string | number | Array<string | number>
 
 export type ShouldWatchCollection = (collection: string) => boolean
 
@@ -15,27 +15,27 @@ export interface StorageChangeBase {
 
 export type CreationStorageChange<
     Phase extends 'pre' | 'post'
-> = StorageChangeBase & {
-    type: 'create'
-    values: { [key: string]: any }
-} & (Phase extends 'post' ? { pk: StorageChangePk } : { pk?: StorageChangePk })
+    > = StorageChangeBase & {
+        type: 'create'
+        values: { [key: string]: any }
+    } & (Phase extends 'post' ? { pk: StorageChangePk } : { pk?: StorageChangePk })
 
 export type ModificationStorageChange<
     Phase extends 'pre' | 'post'
-> = StorageChangeBase & {
-    type: 'modify'
-    where: { [key: string]: any }
-    updates: { [key: string]: any }
-    pks: StorageChangePk[]
-}
+    > = StorageChangeBase & {
+        type: 'modify'
+        where: { [key: string]: any }
+        updates: { [key: string]: any }
+        pks: StorageChangePk[]
+    }
 
 export type DeletionStorageChange<
     Phase extends 'pre' | 'post'
-> = StorageChangeBase & {
-    type: 'delete'
-    where: { [key: string]: any }
-    pks: StorageChangePk[]
-}
+    > = StorageChangeBase & {
+        type: 'delete'
+        where: { [key: string]: any }
+        pks: StorageChangePk[]
+    }
 
 export interface StorageOperationChangeInfo<Phase extends 'pre' | 'post'> {
     changes: StorageChange<Phase>[]
