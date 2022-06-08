@@ -121,3 +121,41 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
         return result
     }
 }
+
+export function mergeChangeWatchSettings(allSettings: Array<ChangeWatchMiddlewareSettings | undefined | null>): ChangeWatchMiddlewareSettings {
+    const operationWatchers: NonNullable<ChangeWatchMiddlewareSettings['operationWatchers']> = {}
+    for (const settings of allSettings) {
+        Object.assign(operationWatchers, settings?.operationWatchers ?? {})
+    }
+
+    return {
+        shouldWatchCollection: (collection) => {
+            for (const settings of allSettings) {
+                if (settings?.shouldWatchCollection?.(collection)) {
+                    return true
+                }
+            }
+            return false
+        },
+        operationWatchers,
+        getCollectionDefinition: (collection) => {
+            for (const settings of allSettings) {
+                const definition = settings?.getCollectionDefinition?.(collection)
+                if (definition) {
+                    return definition
+                }
+            }
+            throw new Error(`Could not find definition for collection '${collection}'`)
+        },
+        preprocessOperation: async context => {
+            for (const settings of allSettings) {
+                await settings?.preprocessOperation?.(context)
+            }
+        },
+        postprocessOperation: async context => {
+            for (const settings of allSettings) {
+                await settings?.postprocessOperation?.(context)
+            }
+        },
+    }
+}
