@@ -137,7 +137,7 @@ export function mergeChangeWatchSettings(allSettings: Array<ChangeWatchMiddlewar
             }
             return false
         },
-        operationWatchers,
+        operationWatchers: Object.keys(operationWatchers).length ? operationWatchers : undefined,
         getCollectionDefinition: (collection) => {
             for (const settings of allSettings) {
                 const definition = settings?.getCollectionDefinition?.(collection)
