@@ -1,10 +1,11 @@
 import cloneDeep from 'lodash/cloneDeep'
-import StorageManager, { CollectionDefinition } from '@worldbrain/storex'
-import {
+import type StorageManager from '@worldbrain/storex'
+import type { CollectionDefinition } from '@worldbrain/storex'
+import type {
     StorageMiddlewareContext,
     StorageMiddleware,
 } from '@worldbrain/storex/lib/types/middleware'
-import {
+import type {
     StorageOperationChangeInfo,
     StorageOperationWatcher,
     StorageOperationEvent,
@@ -14,7 +15,13 @@ import { DEFAULT_OPERATION_WATCHERS } from './operation-watchers'
 
 export interface ChangeWatchMiddlewareSettings {
     shouldWatchCollection: ShouldWatchCollection
-    operationWatchers?: { [name: string]: StorageOperationWatcher }
+    operationWatchers?: { [opName: string]: StorageOperationWatcher }
+    /**
+     * Define custom actions here that this middleware should take for specific non-standard operations.
+     */
+    rawOperationWatchers?: {
+        [opName: string]: (operation: any) => Promise<void>
+    }
     getCollectionDefinition?(collection: string): CollectionDefinition
     preprocessOperation?(
         context: StorageOperationEvent<'pre'>,
@@ -23,11 +30,13 @@ export interface ChangeWatchMiddlewareSettings {
         context: StorageOperationEvent<'post'>,
     ): void | Promise<void>
 }
+
 export class ChangeWatchMiddleware implements StorageMiddleware {
     enabled = true
 
     getCollectionDefinition: (collection: string) => CollectionDefinition
     operationWatchers: { [name: string]: StorageOperationWatcher }
+    rawOperationWatchers: { [name: string]: (operation: any) => Promise<void> }
 
     constructor(
         private options: ChangeWatchMiddlewareSettings & {
@@ -40,6 +49,7 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
                 options.storageManager.registry.collections[collection])
         this.operationWatchers =
             options.operationWatchers ?? DEFAULT_OPERATION_WATCHERS
+        this.rawOperationWatchers = options.rawOperationWatchers ?? {}
     }
 
     async process(context: StorageMiddlewareContext) {
@@ -57,6 +67,12 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
             })
         }
         if (!this.enabled) {
+            return executeNext()
+        }
+
+        const rawWatcher = this.rawOperationWatchers[context.operation[0]]
+        if (rawWatcher != null) {
+            await rawWatcher(context.operation)
             return executeNext()
         }
 
