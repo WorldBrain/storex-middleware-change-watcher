@@ -10,6 +10,7 @@ import type {
     StorageOperationWatcher,
     StorageOperationEvent,
     ShouldWatchCollection,
+    RawStorageOperationWatcher,
 } from './types'
 import { DEFAULT_OPERATION_WATCHERS } from './operation-watchers'
 
@@ -19,9 +20,7 @@ export interface ChangeWatchMiddlewareSettings {
     /**
      * Define custom actions here that this middleware should take for specific non-standard operations.
      */
-    rawOperationWatchers?: {
-        [opName: string]: (operation: any) => Promise<void>
-    }
+    rawOperationWatchers?: { [opName: string]: RawStorageOperationWatcher }
     getCollectionDefinition?(collection: string): CollectionDefinition
     preprocessOperation?(
         context: StorageOperationEvent<'pre'>,
@@ -36,7 +35,7 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
 
     getCollectionDefinition: (collection: string) => CollectionDefinition
     operationWatchers: { [name: string]: StorageOperationWatcher }
-    rawOperationWatchers: { [name: string]: (operation: any) => Promise<void> }
+    rawOperationWatchers: { [name: string]: RawStorageOperationWatcher }
 
     constructor(
         private options: ChangeWatchMiddlewareSettings & {
@@ -72,8 +71,13 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
 
         const rawWatcher = this.rawOperationWatchers[context.operation[0]]
         if (rawWatcher != null) {
-            await rawWatcher(context.operation)
-            return executeNext()
+            const { shouldExecuteNextMiddleware } = await rawWatcher(
+                context.operation,
+            )
+            if (shouldExecuteNextMiddleware) {
+                return executeNext()
+            }
+            return
         }
 
         const watcher = this.operationWatchers[context.operation[0]]

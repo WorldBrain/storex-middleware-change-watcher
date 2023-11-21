@@ -47,6 +47,10 @@ export interface StorageOperationEvent<Phase extends 'pre' | 'post'> {
     info: StorageOperationChangeInfo<Phase>
 }
 
+export type RawStorageOperationWatcher = (
+    operation: any,
+) => Promise<{ shouldExecuteNextMiddleware: boolean }>
+
 export interface StorageOperationWatcher {
     shouldWatchOperation(context: {
         operation: any[]
