@@ -1,4 +1,4 @@
-import StorageManager from '@worldbrain/storex'
+import type StorageManager from '@worldbrain/storex'
 
 export type StorageChange<Phase extends 'pre' | 'post'> =
     | CreationStorageChange<Phase>
@@ -15,27 +15,27 @@ export interface StorageChangeBase {
 
 export type CreationStorageChange<
     Phase extends 'pre' | 'post'
-    > = StorageChangeBase & {
-        type: 'create'
-        values: { [key: string]: any }
-    } & (Phase extends 'post' ? { pk: StorageChangePk } : { pk?: StorageChangePk })
+> = StorageChangeBase & {
+    type: 'create'
+    values: { [key: string]: any }
+} & (Phase extends 'post' ? { pk: StorageChangePk } : { pk?: StorageChangePk })
 
 export type ModificationStorageChange<
     Phase extends 'pre' | 'post'
-    > = StorageChangeBase & {
-        type: 'modify'
-        where: { [key: string]: any }
-        updates: { [key: string]: any }
-        pks: StorageChangePk[]
-    }
+> = StorageChangeBase & {
+    type: 'modify'
+    where: { [key: string]: any }
+    updates: { [key: string]: any }
+    pks: StorageChangePk[]
+}
 
 export type DeletionStorageChange<
     Phase extends 'pre' | 'post'
-    > = StorageChangeBase & {
-        type: 'delete'
-        where: { [key: string]: any }
-        pks: StorageChangePk[]
-    }
+> = StorageChangeBase & {
+    type: 'delete'
+    where: { [key: string]: any }
+    pks: StorageChangePk[]
+}
 
 export interface StorageOperationChangeInfo<Phase extends 'pre' | 'post'> {
     changes: StorageChange<Phase>[]
@@ -47,9 +47,9 @@ export interface StorageOperationEvent<Phase extends 'pre' | 'post'> {
     info: StorageOperationChangeInfo<Phase>
 }
 
-export type RawStorageOperationWatcher = (
+export type CustomStorageOperationWatcher = (
     operation: any,
-) => Promise<{ shouldExecuteNextMiddleware: boolean }>
+) => Promise<{ skipNextMiddlewares?: boolean }>
 
 export interface StorageOperationWatcher {
     shouldWatchOperation(context: {

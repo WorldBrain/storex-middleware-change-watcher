@@ -10,7 +10,7 @@ import type {
     StorageOperationWatcher,
     StorageOperationEvent,
     ShouldWatchCollection,
-    RawStorageOperationWatcher,
+    CustomStorageOperationWatcher,
 } from './types'
 import { DEFAULT_OPERATION_WATCHERS } from './operation-watchers'
 
@@ -20,7 +20,9 @@ export interface ChangeWatchMiddlewareSettings {
     /**
      * Define custom actions here that this middleware should take for specific non-standard operations.
      */
-    rawOperationWatchers?: { [opName: string]: RawStorageOperationWatcher }
+    customOperationWatchers?: {
+        [opName: string]: CustomStorageOperationWatcher
+    }
     getCollectionDefinition?(collection: string): CollectionDefinition
     preprocessOperation?(
         context: StorageOperationEvent<'pre'>,
@@ -35,7 +37,7 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
 
     getCollectionDefinition: (collection: string) => CollectionDefinition
     operationWatchers: { [name: string]: StorageOperationWatcher }
-    rawOperationWatchers: { [name: string]: RawStorageOperationWatcher }
+    customOperationWatchers: { [name: string]: CustomStorageOperationWatcher }
 
     constructor(
         private options: ChangeWatchMiddlewareSettings & {
@@ -44,11 +46,11 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
     ) {
         this.getCollectionDefinition =
             options.getCollectionDefinition ??
-            (collection =>
+            ((collection) =>
                 options.storageManager.registry.collections[collection])
         this.operationWatchers =
             options.operationWatchers ?? DEFAULT_OPERATION_WATCHERS
-        this.rawOperationWatchers = options.rawOperationWatchers ?? {}
+        this.customOperationWatchers = options.customOperationWatchers ?? {}
     }
 
     async process(context: StorageMiddlewareContext) {
@@ -69,23 +71,25 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
             return executeNext()
         }
 
-        const rawWatcher = this.rawOperationWatchers[context.operation[0]]
-        if (rawWatcher != null) {
-            const { shouldExecuteNextMiddleware } = await rawWatcher(
+        const customOpWatcher = this.customOperationWatchers[
+            context.operation[0]
+        ]
+        if (customOpWatcher != null) {
+            const { skipNextMiddlewares } = await customOpWatcher(
                 context.operation,
             )
-            if (shouldExecuteNextMiddleware) {
-                return executeNext()
+            if (skipNextMiddlewares) {
+                return
             }
-            return
-        }
-
-        const watcher = this.operationWatchers[context.operation[0]]
-        if (!watcher) {
             return executeNext()
         }
 
-        const shouldWatchOperation = watcher.shouldWatchOperation({
+        const opWatcher = this.operationWatchers[context.operation[0]]
+        if (!opWatcher) {
+            return executeNext()
+        }
+
+        const shouldWatchOperation = opWatcher.shouldWatchOperation({
             operation: originalOperation,
             shouldWatchCollection: this.options.shouldWatchCollection,
         })
@@ -93,22 +97,22 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
             return executeNext()
         }
 
-        const rawPreInfo = await watcher.getInfoBeforeExecution({
+        const rawPreInfo = await opWatcher.getInfoBeforeExecution({
             operation: originalOperation,
             storageManager: this.options.storageManager,
             shouldWatchCollection: this.options.shouldWatchCollection,
         })
         const preInfo: StorageOperationChangeInfo<'pre'> = {
-            changes: rawPreInfo.changes.filter(change =>
+            changes: rawPreInfo.changes.filter((change) =>
                 this.options.shouldWatchCollection(change.collection),
             ),
         }
         if (!preInfo.changes.length) {
             return executeNext()
         }
-        if (watcher.transformOperation) {
+        if (opWatcher.transformOperation) {
             modifiedOperation =
-                (await watcher.transformOperation({
+                (await opWatcher.transformOperation({
                     originalOperation,
                     storageManager: this.options.storageManager,
                     info: preInfo,
@@ -124,7 +128,7 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
         }
         const result = await executeNext(preInfo)
 
-        const postInfo = await watcher.getInfoAfterExecution({
+        const postInfo = await opWatcher.getInfoAfterExecution({
             operation: originalOperation,
             preInfo: rawPreInfo,
             result,
@@ -142,8 +146,12 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
     }
 }
 
-export function mergeChangeWatchSettings(allSettings: Array<ChangeWatchMiddlewareSettings | undefined | null>): ChangeWatchMiddlewareSettings {
-    const operationWatchers: NonNullable<ChangeWatchMiddlewareSettings['operationWatchers']> = {}
+export function mergeChangeWatchSettings(
+    allSettings: Array<ChangeWatchMiddlewareSettings | undefined | null>,
+): ChangeWatchMiddlewareSettings {
+    const operationWatchers: NonNullable<
+        ChangeWatchMiddlewareSettings['operationWatchers']
+    > = {}
     for (const settings of allSettings) {
         Object.assign(operationWatchers, settings?.operationWatchers ?? {})
     }
@@ -157,22 +165,28 @@ export function mergeChangeWatchSettings(allSettings: Array<ChangeWatchMiddlewar
             }
             return false
         },
-        operationWatchers: Object.keys(operationWatchers).length ? operationWatchers : undefined,
+        operationWatchers: Object.keys(operationWatchers).length
+            ? operationWatchers
+            : undefined,
         getCollectionDefinition: (collection) => {
             for (const settings of allSettings) {
-                const definition = settings?.getCollectionDefinition?.(collection)
+                const definition = settings?.getCollectionDefinition?.(
+                    collection,
+                )
                 if (definition) {
                     return definition
                 }
             }
-            throw new Error(`Could not find definition for collection '${collection}'`)
+            throw new Error(
+                `Could not find definition for collection '${collection}'`,
+            )
         },
-        preprocessOperation: async context => {
+        preprocessOperation: async (context) => {
             for (const settings of allSettings) {
                 await settings?.preprocessOperation?.(context)
             }
         },
-        postprocessOperation: async context => {
+        postprocessOperation: async (context) => {
             for (const settings of allSettings) {
                 await settings?.postprocessOperation?.(context)
             }
