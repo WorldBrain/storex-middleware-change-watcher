@@ -1,4 +1,4 @@
-import type StorageManager from '@worldbrain/storex'
+import type StorageManager from '@worldbrain/storex/ts'
 
 export type StorageChange<Phase extends 'pre' | 'post'> =
     | CreationStorageChange<Phase>
@@ -13,29 +13,28 @@ export interface StorageChangeBase {
     collection: string
 }
 
-export type CreationStorageChange<
-    Phase extends 'pre' | 'post'
-> = StorageChangeBase & {
-    type: 'create'
-    values: { [key: string]: any }
-} & (Phase extends 'post' ? { pk: StorageChangePk } : { pk?: StorageChangePk })
+export type CreationStorageChange<Phase extends 'pre' | 'post'> =
+    StorageChangeBase & {
+        type: 'create'
+        values: { [key: string]: any }
+    } & (Phase extends 'post'
+            ? { pk: StorageChangePk }
+            : { pk?: StorageChangePk })
 
-export type ModificationStorageChange<
-    Phase extends 'pre' | 'post'
-> = StorageChangeBase & {
-    type: 'modify'
-    where: { [key: string]: any }
-    updates: { [key: string]: any }
-    pks: StorageChangePk[]
-}
+export type ModificationStorageChange<Phase extends 'pre' | 'post'> =
+    StorageChangeBase & {
+        type: 'modify'
+        where: { [key: string]: any }
+        updates: { [key: string]: any }
+        pks: StorageChangePk[]
+    }
 
-export type DeletionStorageChange<
-    Phase extends 'pre' | 'post'
-> = StorageChangeBase & {
-    type: 'delete'
-    where: { [key: string]: any }
-    pks: StorageChangePk[]
-}
+export type DeletionStorageChange<Phase extends 'pre' | 'post'> =
+    StorageChangeBase & {
+        type: 'delete'
+        where: { [key: string]: any }
+        pks: StorageChangePk[]
+    }
 
 export interface StorageOperationChangeInfo<Phase extends 'pre' | 'post'> {
     changes: StorageChange<Phase>[]

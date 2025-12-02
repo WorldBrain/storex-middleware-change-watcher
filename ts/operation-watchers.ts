@@ -2,7 +2,7 @@ import every from 'lodash/every'
 import StorageManager, {
     OperationBatch,
     CollectionDefinition,
-} from '@worldbrain/storex'
+} from '@worldbrain/storex/ts'
 import {
     StorageOperationWatcher,
     ModificationStorageChange,
@@ -12,7 +12,7 @@ import {
     StorageOperationChangeInfo,
     StorageChangePk,
 } from './types'
-import { getObjectPk, getObjectWithoutPk } from '@worldbrain/storex/lib/utils'
+import { getObjectPk, getObjectWithoutPk } from '@worldbrain/storex/ts/utils'
 
 const createObject: StorageOperationWatcher = {
     shouldWatchOperation(context) {
@@ -73,16 +73,17 @@ const updateObject: StorageOperationWatcher = {
     async getInfoBeforeExecution(context) {
         const { operation } = context
         const collection = operation[1]
-        const affectedObjects: any[] = await _findObjectsInvolvedInFilteredOperation(
-            operation,
-            context.storageManager,
-        )
+        const affectedObjects: any[] =
+            await _findObjectsInvolvedInFilteredOperation(
+                operation,
+                context.storageManager,
+            )
         const change: ModificationStorageChange<'pre'> = {
             type: 'modify',
             collection: operation[1],
             where: operation[2],
             updates: operation[3],
-            pks: affectedObjects.map(object =>
+            pks: affectedObjects.map((object) =>
                 getObjectPk(
                     object,
                     collection,
@@ -167,15 +168,16 @@ const deleteObject: StorageOperationWatcher = {
     async getInfoBeforeExecution(context) {
         const { operation } = context
         const collection = operation[1]
-        const affectedObjects: any[] = await _findObjectsInvolvedInFilteredOperation(
-            operation,
-            context.storageManager,
-        )
+        const affectedObjects: any[] =
+            await _findObjectsInvolvedInFilteredOperation(
+                operation,
+                context.storageManager,
+            )
         const change: DeletionStorageChange<'pre'> = {
             type: 'delete',
             collection: operation[1],
             where: operation[2],
-            pks: affectedObjects.map(object =>
+            pks: affectedObjects.map((object) =>
                 getObjectPk(
                     object,
                     collection,
@@ -354,8 +356,9 @@ const executeBatch: StorageOperationWatcher = {
                         ],
                         preInfo: { changes: [context.preInfo.changes[index]] },
                         storageManager: context.storageManager,
-                        result:
-                            context.result.info[batchOperation.placeholder!],
+                        result: context.result.info[
+                            batchOperation.placeholder!
+                        ],
                         shouldWatchCollection: context.shouldWatchCollection,
                     }),
                 )

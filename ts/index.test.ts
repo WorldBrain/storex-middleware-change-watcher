@@ -1,16 +1,16 @@
 import cloneDeep from 'lodash/cloneDeep'
-import expect = require('expect')
+import expect from 'expect'
 import {
     StorageMiddleware,
     StorageMiddlewareContext,
-} from '@worldbrain/storex/lib/types/middleware'
+} from '@worldbrain/storex/ts/types/middleware'
 import StorageManager, {
     CollectionFields,
     IndexDefinition,
     OperationBatch,
-} from '@worldbrain/storex'
+} from '@worldbrain/storex/ts'
 import { DexieStorageBackend } from '@worldbrain/storex-backend-dexie'
-import inMemory from '@worldbrain/storex-backend-dexie/lib/in-memory'
+import inMemory from '@worldbrain/storex-backend-dexie/ts/in-memory'
 import { ChangeWatchMiddlewareSettings, ChangeWatchMiddleware } from '.'
 import { StorageOperationChangeInfo, StorageOperationEvent } from './types'
 
@@ -67,17 +67,17 @@ async function setupTest(
         storageManager,
         shouldWatchCollection: options?.shouldWatchCollection ?? (() => true),
         operationWatchers: options?.operationWatchers,
-        getCollectionDefinition: collection =>
+        getCollectionDefinition: (collection) =>
             storageManager.registry.collections[collection],
         preprocessOperation:
-            options?.preprocesses ?? true
-                ? event => {
+            (options?.preprocesses ?? true)
+                ? (event) => {
                       operations.preprocessed.push(event)
                   }
                 : undefined,
         postprocessOperation:
-            options?.postprocesses ?? true
-                ? event => {
+            (options?.postprocesses ?? true)
+                ? (event) => {
                       operations.postprocessed.push(event)
                   }
                 : undefined,
@@ -85,7 +85,7 @@ async function setupTest(
 
     const loggedOperations: any[][] = []
     const operationLoggingMiddleware: StorageMiddleware = {
-        process: async context => {
+        process: async (context) => {
             loggedOperations.push(cloneDeep(context.operation))
             return context.next.process({ operation: context.operation })
         },
@@ -99,7 +99,7 @@ async function setupTest(
     return {
         storageManager,
         changeWatchMiddleware,
-        popProcessedOperations: type => {
+        popProcessedOperations: (type) => {
             const preprocessed = operations[type]
             operations[type] = []
             return preprocessed
@@ -385,18 +385,19 @@ describe('ChangeWatchMiddleware', () => {
                 where: { id: { $in: [object1.id] } },
             },
         ]
-        const expectedPreprocessedOperations: ProcessedTestOperations['preprocessed'] = [
-            {
-                originalOperation: [
-                    'updateObject',
-                    'user',
-                    { id: object1.id },
-                    { displayName: 'Jon' },
-                ],
-                modifiedOperation: ['executeBatch', batch],
-                info: expectedPreInfo,
-            },
-        ]
+        const expectedPreprocessedOperations: ProcessedTestOperations['preprocessed'] =
+            [
+                {
+                    originalOperation: [
+                        'updateObject',
+                        'user',
+                        { id: object1.id },
+                        { displayName: 'Jon' },
+                    ],
+                    modifiedOperation: ['executeBatch', batch],
+                    info: expectedPreInfo,
+                },
+            ]
         expectPreProcessedOperations(
             { popProcessedOperations },
             expectedPreprocessedOperations,
@@ -839,9 +840,9 @@ describe('ChangeWatchMiddleware', () => {
             },
         ])
 
-        expect(
-            await storageManager.collection('user').findObjects({}),
-        ).toEqual([{ id: object2.id, displayName: 'Bob' }])
+        expect(await storageManager.collection('user').findObjects({})).toEqual(
+            [{ id: object2.id, displayName: 'Bob' }],
+        )
     })
 
     it('should correctly report deletions by deleteObjects filtered by PK', async () => {
@@ -906,9 +907,9 @@ describe('ChangeWatchMiddleware', () => {
             },
         ])
 
-        expect(
-            await storageManager.collection('user').findObjects({}),
-        ).toEqual([{ id: object2.id, displayName: 'Bob' }])
+        expect(await storageManager.collection('user').findObjects({})).toEqual(
+            [{ id: object2.id, displayName: 'Bob' }],
+        )
     })
 
     it('should correctly report deletions by deleteObjects filtered by other fields', async () => {
@@ -973,9 +974,9 @@ describe('ChangeWatchMiddleware', () => {
             },
         ])
 
-        expect(
-            await storageManager.collection('user').findObjects({}),
-        ).toEqual([{ id: object2.id, displayName: 'Bob' }])
+        expect(await storageManager.collection('user').findObjects({})).toEqual(
+            [{ id: object2.id, displayName: 'Bob' }],
+        )
     })
 
     it('should correctly report changes through batch operations', async () => {
@@ -1183,7 +1184,8 @@ describe('ChangeWatchMiddleware', () => {
 
     it('should not touch operations in batches for collections it is not enabled for', async () => {
         const setup = await setupTest({
-            shouldWatchCollection: collectionName => collectionName === 'user',
+            shouldWatchCollection: (collectionName) =>
+                collectionName === 'user',
         })
         await insertTestObjects(setup)
         await setup.storageManager.operation('createObject', 'email', {
@@ -1250,7 +1252,7 @@ describe('ChangeWatchMiddleware', () => {
         const { storageManager, popProcessedOperations } = await setupTest({
             extraMiddleware: [
                 {
-                    process: context => {
+                    process: (context) => {
                         calls.push({ extraData: context.extraData })
                         return context.next.process({
                             operation: context.operation,

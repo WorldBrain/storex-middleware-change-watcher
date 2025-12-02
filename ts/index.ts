@@ -1,10 +1,10 @@
 import cloneDeep from 'lodash/cloneDeep'
-import type StorageManager from '@worldbrain/storex'
-import type { CollectionDefinition } from '@worldbrain/storex'
+import type StorageManager from '@worldbrain/storex/ts'
+import type { CollectionDefinition } from '@worldbrain/storex/ts'
 import type {
     StorageMiddlewareContext,
     StorageMiddleware,
-} from '@worldbrain/storex/lib/types/middleware'
+} from '@worldbrain/storex/ts/types/middleware'
 import type {
     StorageOperationChangeInfo,
     StorageOperationWatcher,
@@ -71,9 +71,8 @@ export class ChangeWatchMiddleware implements StorageMiddleware {
             return executeNext()
         }
 
-        const customOpWatcher = this.customOperationWatchers[
-            context.operation[0]
-        ]
+        const customOpWatcher =
+            this.customOperationWatchers[context.operation[0]]
         if (customOpWatcher != null) {
             const { skipNextMiddlewares } = await customOpWatcher(
                 context.operation,
@@ -170,9 +169,8 @@ export function mergeChangeWatchSettings(
             : undefined,
         getCollectionDefinition: (collection) => {
             for (const settings of allSettings) {
-                const definition = settings?.getCollectionDefinition?.(
-                    collection,
-                )
+                const definition =
+                    settings?.getCollectionDefinition?.(collection)
                 if (definition) {
                     return definition
                 }
